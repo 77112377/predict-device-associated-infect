@@ -1,0 +1,105 @@
+WITH infection_data AS (
+  SELECT DISTINCT
+    i.subject_id,
+    i.hadm_id,
+    i.stay_id,
+    d.seq_num,
+
+
+    -- 2.1.1 VAP
+    CASE
+      WHEN (d.icd_version = 9 AND (d.icd_code LIKE '%4957%' OR d.icd_code LIKE '%99731%'))
+        OR (d.icd_version = 10 AND d.icd_code LIKE '%J95851%')
+      THEN 1 ELSE 0
+    END AS VAP,
+
+
+    -- 2.1.2 CLABSI
+    CASE
+      WHEN (d.icd_version = 9 AND (d.icd_code LIKE '%99931%' OR d.icd_code LIKE '%99932%'))
+        OR (d.icd_version = 10 AND d.icd_code LIKE '%T80211A%')
+      THEN 1 ELSE 0
+    END AS CLABSI,
+
+
+    -- 2.1.3 CAUTI
+    CASE
+      WHEN (d.icd_version = 9 AND d.icd_code LIKE '%99664%')
+        OR (d.icd_version = 10 AND d.icd_code LIKE '%T8351XA%')
+      THEN 1 ELSE 0
+    END AS CAUTI,
+
+
+    -- Outcomes
+    a.hospital_expire_flag AS in_hospital_mortality,
+    i.los_hospital AS hospital_length_of_survival,
+
+
+    CASE
+      WHEN a.hospital_expire_flag = 1 AND DATETIME_DIFF(i.dischtime, i.icu_outtime, MINUTE) <= 60
+      THEN 1 ELSE 0
+    END AS icu_mortality,
+
+
+    i.los_icu AS icu_length_of_survival,
+
+
+    -- First day labs
+    l.*,
+
+
+    -- Sum of infection indicators
+    (CASE
+      WHEN (d.icd_version = 9 AND (d.icd_code LIKE '%4957%' OR d.icd_code LIKE '%99731%'))
+        OR (d.icd_version = 10 AND d.icd_code LIKE '%J95851%')
+      THEN 1 ELSE 0
+    END
+    +
+    CASE
+      WHEN (d.icd_version = 9 AND (d.icd_code LIKE '%99931%' OR d.icd_code LIKE '%99932%'))
+        OR (d.icd_version = 10 AND d.icd_code LIKE '%T80211A%')
+      THEN 1 ELSE 0
+    END
+    +
+    CASE
+      WHEN (d.icd_version = 9 AND d.icd_code LIKE '%99664%')
+        OR (d.icd_version = 10 AND d.icd_code LIKE '%T8351XA%')
+      THEN 1 ELSE 0
+    END) AS infection_sum,
+
+
+    ROW_NUMBER() OVER (PARTITION BY i.stay_id ORDER BY
+      (CASE
+        WHEN (d.icd_version = 9 AND (d.icd_code LIKE '%4957%' OR d.icd_code LIKE '%99731%'))
+          OR (d.icd_version = 10 AND d.icd_code LIKE '%J95851%')
+        THEN 1 ELSE 0
+      END
+      +
+      CASE
+        WHEN (d.icd_version = 9 AND (d.icd_code LIKE '%99931%' OR d.icd_code LIKE '%99932%'))
+          OR (d.icd_version = 10 AND d.icd_code LIKE '%T80211A%')
+        THEN 1 ELSE 0
+      END
+      +
+      CASE
+        WHEN (d.icd_version = 9 AND d.icd_code LIKE '%99664%')
+          OR (d.icd_version = 10 AND d.icd_code LIKE '%T8351XA%')
+        THEN 1 ELSE 0
+      END) DESC) AS rn
+
+
+  FROM `physionet-data.mimiciv_2_2_hosp.diagnoses_icd` d
+  LEFT JOIN `physionet-data.mimiciv_2_2_hosp.admissions` a
+    ON d.subject_id = a.subject_id AND d.hadm_id = a.hadm_id
+  LEFT JOIN `physionet-data.mimiciv_2_2_derived.icustay_detail` i
+    ON d.subject_id = i.subject_id AND d.hadm_id = i.hadm_id
+  JOIN `physionet-data.mimiciv_2_2_derived.first_day_lab` l
+    ON i.stay_id = l.stay_id
+  WHERE l.stay_id IS NOT NULL
+)
+
+
+-- Select only the row with highest infection count per stay
+SELECT * EXCEPT(rn)
+FROM infection_data
+WHERE rn = 1 and seq_num<=5;

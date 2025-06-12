@@ -1,0 +1,80 @@
+WITH age AS (
+  SELECT subject_id, age
+  FROM `physionet-data.mimiciv_derived.age`
+),
+gender AS (
+  SELECT subject_id, 
+         CASE 
+           WHEN gender = 'F' THEN 1
+           WHEN gender = 'M' THEN 0
+         END AS gender
+  FROM `physionet-data.mimiciv_derived.icustay_detail`
+),
+insurance_ethnicity AS (
+  SELECT subject_id,hadm_id,
+         CASE 
+           WHEN insurance = 'Government' THEN 1
+           WHEN insurance = 'Medicaid' THEN 2
+           WHEN insurance = 'Medicare' THEN 3
+           WHEN insurance = 'Private' THEN 4
+           WHEN insurance = 'Self Pay' THEN 5
+           ELSE 6
+         END AS insurance,
+         CASE 
+           WHEN race = 'UNKNOWN' THEN 1
+           WHEN race = 'OTHER' THEN 2
+           WHEN race LIKE '%ASIAN%' THEN 3
+           WHEN race LIKE '%WHITE%' THEN 4
+           WHEN race = 'UNABLE TO OBTAIN' THEN 5
+           WHEN race LIKE '%BLACK%' THEN 6
+           WHEN race LIKE '%AMERICAN INDIAN%' THEN 7
+           WHEN race LIKE '%HISPANIC%' THEN 8
+           ELSE 2
+         END AS race,
+         CASE 
+           WHEN admission_type = 'AMBULATORY OBSERVATION' THEN 1
+           WHEN admission_type = 'DIRECT EMER.' THEN 2
+           WHEN admission_type = 'DIRECT OBSERVATION' THEN 3
+           WHEN admission_type = 'ELECTIVE' THEN 4
+           WHEN admission_type = 'EU OBSERVATION' THEN 5
+           WHEN admission_type = 'EW EMER.' THEN 6
+           WHEN admission_type = 'OBSERVATION ADMIT' THEN 7
+           WHEN admission_type = 'SURGICAL SAME DAY ADMISSION' THEN 8
+           WHEN admission_type = 'URGENT' THEN 9
+           ELSE NULL
+         END AS admission_type
+  FROM `physionet-data.mimiciv_hosp.admissions`
+),
+icu_type AS (
+  SELECT subject_id, stay_id,hadm_id,
+         CASE first_careunit
+           WHEN 'CVICU' THEN 1
+           WHEN 'CCU' THEN 2
+           WHEN 'MICU' THEN 3
+           WHEN 'MICU/SICU' THEN 4
+           WHEN 'Med-Surg ICU' THEN 5
+           WHEN 'Neuro Intermediate' THEN 6
+           WHEN 'Neuro Stepdown' THEN 7
+           WHEN 'Neuro SICU' THEN 8
+           WHEN 'PACU' THEN 9
+           WHEN 'SICU' THEN 10
+           WHEN 'TSICU' THEN 11
+           ELSE NULL
+         END AS icu_type
+  FROM `physionet-data.mimiciv_icu.icustays`
+)
+SELECT 
+  i.subject_id,
+  i.stay_id,
+  i.hadm_id,
+  a.age,
+  g.gender,
+  ins.insurance,
+  ins.race,
+  ins.admission_type,
+  i.icu_type
+FROM icu_type i
+LEFT JOIN age a ON i.subject_id = a.subject_id
+LEFT JOIN gender g ON i.subject_id = g.subject_id
+LEFT JOIN insurance_ethnicity ins 
+  ON i.subject_id = ins.subject_id AND i.hadm_id = ins.hadm_id

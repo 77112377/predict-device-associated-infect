@@ -1,0 +1,14 @@
+WITH charlson AS(
+  SELECT *
+  FROM `physionet-data.mimiciv_derived.charlson`
+),
+apsiii AS(
+  SELECT *
+  FROM `physionet-data.mimiciv_derived.apsiii`
+)
+SELECT distinct
+  c.* ,
+  ap.apsiii
+FROM apsiii ap
+LEFT JOIN charlson c ON c.subject_id = ap.subject_id
+

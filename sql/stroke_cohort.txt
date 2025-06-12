@@ -1,0 +1,149 @@
+WITH icu as(
+  SELECT *, FIRST_VALUE(los) over (partition by subject_id order by intime) as first_los, ROW_NUMBER() OVER (PARTITION BY stay_id ORDER BY intime) AS rn
+  FROM `physionet-data.mimiciv_2_2_icu.icustays`
+)
+SELECT distinct
+  icd.subject_id,
+  icd.hadm_id,
+  icu.stay_id,
+  icd.icd_code,
+  icd.icd_version,
+  icu.los,
+  icu.intime,
+  icu.first_los,
+  seq_num,
+  CASE
+    -- 1 = Ischemic stroke (可再加其他 ischemic 中風相關碼)
+    WHEN icd_code LIKE '433%' THEN 1
+    WHEN icd_code LIKE '434%' THEN 1
+    WHEN icd_code LIKE 'G45[01239]' THEN 1
+    WHEN icd_code LIKE 'G46[01234567]' THEN 1
+    WHEN icd_code LIKE 'I63[012][029]' THEN 1
+    WHEN icd_code LIKE 'I63[345][09]' THEN 1
+    WHEN icd_code LIKE 'I63[012][13][1239]' THEN 1
+    WHEN icd_code LIKE 'I63[345][1234][1239]' THEN 1
+    WHEN icd_code LIKE 'I63[69]' THEN 1
+    WHEN icd_code LIKE 'I638[19]' THEN 1
+    WHEN icd_code LIKE 'I678[12]' THEN 1
+    WHEN icd_code LIKE 'I67850' THEN 1
+
+    -- 2 = Traumatic brain injury
+    WHEN icd_code LIKE '800%' THEN 2
+    WHEN icd_code LIKE '801%' THEN 2
+    WHEN icd_code LIKE '802%' THEN 2
+    WHEN icd_code LIKE '803%' THEN 2
+    WHEN icd_code LIKE '804%' THEN 2
+    WHEN icd_code LIKE '850%' THEN 2
+    WHEN icd_code LIKE '851%' THEN 2
+    WHEN icd_code LIKE '852%' THEN 2
+    WHEN icd_code LIKE '853%' THEN 2
+    WHEN icd_code LIKE '854%' THEN 2
+    WHEN icd_code LIKE 'V8001' THEN 2
+    WHEN icd_code LIKE 'G935' THEN 2
+    WHEN icd_code LIKE 'G9611' THEN 2
+    WHEN icd_code LIKE 'G9741' THEN 2
+    WHEN icd_code LIKE 'G9748' THEN 2
+    WHEN icd_code LIKE 'G9749' THEN 2
+    WHEN icd_code LIKE 'P110' THEN 2
+    WHEN icd_code LIKE 'S060X0_' THEN 2
+    WHEN icd_code LIKE 'S060X1_' THEN 2
+    WHEN icd_code LIKE 'S060X9_' THEN 2
+    WHEN icd_code LIKE 'S06[12569]X[01234569]_' THEN 2
+    WHEN icd_code LIKE 'S06[12569]X[78]A' THEN 2
+    WHEN icd_code LIKE 'S063[012345678][01234569]_' THEN 2
+    WHEN icd_code LIKE 'S063[012345678][78]A' THEN 2
+    WHEN icd_code LIKE 'S068[129][01234569]A' THEN 2
+    WHEN icd_code LIKE 'S068[129][78]A' THEN 2
+    
+
+    -- 3 = Subarachnoid hemorrhage (SAH)
+    WHEN icd_code = '430' THEN 3
+    WHEN icd_code LIKE 'I60[0135][012]' THEN 3
+    WHEN icd_code LIKE 'I60[246789]' THEN 3
+
+    -- 4 = Intracerebral hemorrhage, non-SAH
+    WHEN icd_code = '431' THEN 4 -- intracerebral hemorrhage
+    WHEN icd_code LIKE '432[019]' THEN 4 -- SDH (432.1)，注意無點
+    WHEN icd_code = '9487' THEN 4
+    WHEN icd_code LIKE '7721[01234]' THEN 4
+    WHEN icd_code LIKE 'I61[012345689]' THEN 4
+    WHEN icd_code LIKE 'I620[0123]' THEN 4
+    WHEN icd_code LIKE 'I62[19]' THEN 4
+    WHEN icd_code LIKE 'S064X[01234569]_' THEN 4
+    WHEN icd_code LIKE 'S064X[78]A' THEN 4
+    WHEN icd_code = '8524' THEN 4 -- EDH (852.4)
+
+    ELSE NULL
+  END AS stroke_type
+FROM
+  `physionet-data.mimiciv_2_2_hosp.diagnoses_icd` as icd
+INNER JOIN
+  `physionet-data.mimiciv_2_2_derived.age` as age ON age.subject_id = icd.subject_id
+INNER JOIN
+  icu ON icu.subject_id = icd.subject_id AND icu.hadm_id = icd.hadm_id
+WHERE
+
+  icu.los > 1
+  AND
+  icu.los = icu.first_los
+  AND
+  age.age >= 18
+  AND
+  icu.stay_id IS NOT null
+  AND
+  seq_num = 1
+  AND
+(
+    icd_code LIKE '433%'
+    OR icd_code LIKE '434%'
+    OR icd_code LIKE '800%'
+    OR icd_code LIKE '801%'
+    OR icd_code LIKE '802%'
+    OR icd_code LIKE '803%'
+    OR icd_code LIKE '804%'
+    OR icd_code LIKE '850%'
+    OR icd_code LIKE '851%'
+    OR icd_code LIKE '852%'
+    OR icd_code LIKE '853%'
+    OR icd_code LIKE '854%'
+    OR icd_code = '430'
+    OR icd_code = '431'
+    OR icd_code = '4321'
+    OR icd_code = '8524'
+    OR icd_code LIKE 'V8001' 
+    OR icd_code LIKE 'G935' 
+    OR icd_code LIKE 'G9611' 
+    OR icd_code LIKE 'G9741' 
+    OR icd_code LIKE 'G9748' 
+    OR icd_code LIKE 'G9749' 
+    OR icd_code LIKE 'P110' 
+    OR icd_code LIKE 'S060X0_' 
+    OR icd_code LIKE 'S060X1_' 
+    OR icd_code LIKE 'S060X9_' 
+    OR icd_code LIKE 'S06[12569]X[01234569]_' 
+    OR icd_code LIKE 'S06[12569]X[78]A' 
+    OR icd_code LIKE 'S063[012345678][01234569]_' 
+    OR icd_code LIKE 'S063[012345678][78]A' 
+    OR icd_code LIKE 'S068[129][01234569]A' 
+    OR icd_code LIKE 'S068[129][78]A' 
+    OR icd_code LIKE 'G45[01239]' 
+    OR icd_code LIKE 'G46[01234567]' 
+    OR icd_code LIKE 'I63[012][029]' 
+    OR icd_code LIKE 'I63[345][09]' 
+    OR icd_code LIKE 'I63[012][13][1239]' 
+    OR icd_code LIKE 'I63[345][1234][1239]' 
+    OR icd_code LIKE 'I63[69]' 
+    OR icd_code LIKE 'I638[19]' 
+    OR icd_code LIKE 'I678[12]' 
+    OR icd_code LIKE 'I67850' 
+    OR icd_code LIKE '432[019]'  -- SDH (432.1)，注意無點
+    OR icd_code = '9487'
+    OR icd_code LIKE '7721[01234]'
+    OR icd_code LIKE 'I61[012345689]'
+    OR icd_code LIKE 'I620[0123]'
+    OR icd_code LIKE 'I62[19]' 
+    OR icd_code LIKE 'S064X[01234569]_' 
+    OR icd_code LIKE 'S064X[78]A'
+  )
+
+order by subject_id
